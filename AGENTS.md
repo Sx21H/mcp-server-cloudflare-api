@@ -70,10 +70,24 @@ support project-scoped config (e.g. Claude Code) pick it up automatically.
 `authv2` is Atlassian's current recommended endpoint; the older
 `/v1/mcp` form still works and is what their one-click installers hand out.
 
-**OAuth (what `.mcp.json` uses).** The client opens a browser on first connect
-and reuses the credentials afterwards, so no tokens or secrets belong in
-`.mcp.json` — the client stores them itself. This is the right default for
-local development.
+**First connect needs approval.** A server declared in a committed `.mcp.json`
+is registered but does not connect until you approve it — run `claude` and
+accept the prompt, or pre-approve it yourself:
+
+```jsonc
+// .claude/settings.local.json (gitignored)
+{ "enabledMcpjsonServers": ["atlassian"] }
+```
+
+That approval is deliberately personal rather than committed: a repo-controlled
+file approving a repo-controlled server would defeat the prompt for everyone who
+clones. Until it is granted the server shows as `⏸ Pending approval` in
+`claude mcp list` and makes no network request at all.
+
+**OAuth (what `.mcp.json` uses).** Once approved, the client opens a browser on
+first connect and reuses the credentials afterwards, so no tokens or secrets
+belong in `.mcp.json` — the client stores them itself. This is the right default
+for local development.
 
 **API token (headless clients).** The browser flow can't run in CI, containers,
 or remote agent sessions. For those, Atlassian supports a static
