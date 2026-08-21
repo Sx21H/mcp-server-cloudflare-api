@@ -63,13 +63,37 @@ Node 22+ required.
 `.mcp.json` configures MCP servers for agents working in this repo. Clients that
 support project-scoped config (e.g. Claude Code) pick it up automatically.
 
-| Server      | URL                                       | Auth                         |
-| ----------- | ----------------------------------------- | ---------------------------- |
-| `atlassian` | `https://mcp.atlassian.com/v1/mcp/authv2` | OAuth, handled by the client |
+| Server      | URL                                       | Transport | Auth     |
+| ----------- | ----------------------------------------- | --------- | -------- |
+| `atlassian` | `https://mcp.atlassian.com/v1/mcp/authv2` | `http`    | OAuth2.1 |
 
-Authorization runs through the MCP OAuth flow, so no tokens or secrets belong in
-`.mcp.json` — the client stores credentials itself. Reaching the server requires
-outbound network access to `mcp.atlassian.com`.
+`authv2` is Atlassian's current recommended endpoint; the older
+`/v1/mcp` form still works and is what their one-click installers hand out.
+
+**OAuth (what `.mcp.json` uses).** The client opens a browser on first connect
+and reuses the credentials afterwards, so no tokens or secrets belong in
+`.mcp.json` — the client stores them itself. This is the right default for
+local development.
+
+**API token (headless clients).** The browser flow can't run in CI, containers,
+or remote agent sessions. For those, Atlassian supports a static
+`Authorization` header instead — `Basic base64(email:api_token)` for a personal
+API token, or `Bearer <key>` for a service account. An org admin must enable
+API token auth first.
+
+Configure that **outside** this file. A header holding a credential must never
+be committed — add it as a local-scope server instead, which keeps it in your
+own client config:
+
+```bash
+claude mcp add --scope local --transport http atlassian-local \
+  https://mcp.atlassian.com/v1/mcp/authv2 \
+  --header "Authorization: Basic $(echo -n "$ATLASSIAN_EMAIL:$ATLASSIAN_API_TOKEN" | base64)"
+```
+
+**Network.** Either path needs outbound access to `mcp.atlassian.com`. Sandboxed
+environments often deny it at the egress proxy (a 403 on the CONNECT tunnel);
+that's an environment policy change, not a config fix.
 
 ## Commands
 
