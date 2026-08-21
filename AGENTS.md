@@ -46,6 +46,7 @@ cloudflare-mcp/
 │   └── bonk.yml                   # AI code review
 ├── wrangler.jsonc                 # Workers config (dev/staging/prod)
 ├── .oxfmtrc.json                  # oxfmt formatter config
+├── .mcp.json                      # Project-scoped MCP servers for agents working in this repo
 └── README.md
 ```
 
@@ -56,6 +57,19 @@ npm install    # Install dependencies
 ```
 
 Node 22+ required.
+
+### Project MCP servers
+
+`.mcp.json` configures MCP servers for agents working in this repo. Clients that
+support project-scoped config (e.g. Claude Code) pick it up automatically.
+
+| Server      | URL                                       | Auth                         |
+| ----------- | ----------------------------------------- | ---------------------------- |
+| `atlassian` | `https://mcp.atlassian.com/v1/mcp/authv2` | OAuth, handled by the client |
+
+Authorization runs through the MCP OAuth flow, so no tokens or secrets belong in
+`.mcp.json` — the client stores credentials itself. Reaching the server requires
+outbound network access to `mcp.atlassian.com`.
 
 ## Commands
 
