@@ -5,6 +5,7 @@ import { CLOUDFLARE_TYPES } from '../constants'
 import { truncateResponse } from '../truncate'
 import { fetchWithRetry } from '../utils/fetch-retry'
 import { formatError } from '../utils/errors'
+import { EXECUTE_ANNOTATIONS } from './annotations'
 import {
   ACCOUNT_DISCOVERY_DESCRIPTION,
   ACCOUNT_DISCOVERY_GUIDANCE,
@@ -307,7 +308,8 @@ export function registerExecuteTool(server: McpServer, props: AuthProps): void {
         description,
         inputSchema: {
           code: z.string().describe('JavaScript async arrow function to execute')
-        }
+        },
+        annotations: EXECUTE_ANNOTATIONS
       },
       async ({ code }) => {
         try {
@@ -328,7 +330,8 @@ export function registerExecuteTool(server: McpServer, props: AuthProps): void {
       inputSchema: {
         code: z.string().describe('JavaScript async arrow function to execute'),
         account_id: z.string().optional().describe(accountIdParamDescription())
-      }
+      },
+      annotations: EXECUTE_ANNOTATIONS
     },
     async ({ code, account_id }) => {
       try {

@@ -126,6 +126,36 @@ Max 76 OAuth scopes enforced (Cloudflare server limitation).
 - The non-Code-Mode artifact contains protocol-ready JSON Schemas plus minimal request-routing metadata. Low-level MCP handlers serve `tools/list` directly and lazily validate/dispatch only the requested `tools/call` operation with Zod; no per-endpoint SDK tools are registered
 - `src/isolate-cache.ts` caches all three artifacts for one hour in warm isolates; non-Code-Mode falls back to deriving its artifact from `spec.json` during rollout
 
+### Tool annotations
+
+Every tool advertises MCP `ToolAnnotations` so clients can decide what needs
+confirmation. They live in `src/tools/annotations.ts`:
+
+- `search` — `readOnlyHint`, `openWorldHint: false` (its isolate is created with
+  `globalOutbound: null`, so it cannot reach anything).
+- `execute` — `readOnlyHint: false`, `destructiveHint` (caller-supplied code runs
+  against the live API).
+- `docs` — `readOnlyHint` against an external index. The Zod registration and the
+  precomputed `DOCS_TOOL` wire definition share one constant; a test asserts the
+  two stay identical.
+- Generated non-Code-Mode tools — derived per request from the endpoint's HTTP
+  method by `annotationsForMethod()`, so no artifact re-seed is needed. `get` is
+  read-only; `put`/`delete` are destructive but idempotent; `patch`/`post` are
+  neither. `post` is treated as destructive because Cloudflare uses it for
+  irreversible actions (cache purges, rollbacks) as well as creation, and the
+  method alone cannot tell them apart.
+
+Annotations are hints, not guarantees, so the safe direction is to over-report
+risk.
+
+### API error messages
+
+A failed non-Code-Mode call returns the HTTP status, the resolved method and
+path, the response body, and a status-specific next step (`apiErrorGuidance()` in
+`src/tools/non-codemode.ts`) — fix the arguments, ask the user to re-authorize,
+or wait and retry. The generated tools carry no per-endpoint troubleshooting
+text, so the status is the only signal an agent has.
+
 ### Response truncation
 
 Responses capped at ~6,000 tokens (~24KB). Truncation notice included with original size to prompt agents to write more specific queries.

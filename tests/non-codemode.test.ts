@@ -1356,4 +1356,155 @@ describe('createServer with codemode=false', () => {
       globalThis.fetch = originalFetch
     }
   })
+  it('annotates generated tools from the HTTP method of their endpoint', async () => {
+    const specPaths = {
+      '/accounts/{account_id}/workers/scripts': {
+        get: { summary: 'List Workers' } as OperationInfo,
+        post: { summary: 'Create Worker' } as OperationInfo
+      },
+      '/accounts/{account_id}/workers/scripts/{script_name}': {
+        put: { summary: 'Upload Worker' } as OperationInfo,
+        patch: { summary: 'Patch Worker' } as OperationInfo,
+        delete: { summary: 'Delete Worker' } as OperationInfo
+      }
+    }
+
+    await seedSpec(specPaths)
+    const server = await createServer(acctProps('test-account'), false)
+
+    const tools = await listTools(server)
+    const annotationsFor = (name: string) => tools.find((tool) => tool.name === name)?.annotations
+
+    expect(annotationsFor('get_accounts_workers_scripts')).toEqual({
+      readOnlyHint: true,
+      idempotentHint: true,
+      openWorldHint: true
+    })
+    expect(annotationsFor('post_accounts_workers_scripts')).toEqual({
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: false,
+      openWorldHint: true
+    })
+    expect(annotationsFor('delete_accounts_workers_scripts_by_script_name')).toEqual({
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: true,
+      openWorldHint: true
+    })
+    expect(annotationsFor('patch_accounts_workers_scripts_by_script_name')?.idempotentHint).toBe(
+      false
+    )
+    expect(annotationsFor('put_accounts_workers_scripts_by_script_name')?.idempotentHint).toBe(true)
+  })
+
+  it('annotates every generated tool in a large spec', async () => {
+    const specPaths = Object.fromEntries(
+      Array.from({ length: 50 }, (_, index) => [
+        `/accounts/{account_id}/resources/${index}`,
+        {
+          get: { summary: `Get resource ${index}` } as OperationInfo,
+          delete: { summary: `Delete resource ${index}` } as OperationInfo
+        }
+      ])
+    )
+
+    await seedSpec(specPaths)
+    const server = await createServer(acctProps('test-account'), false)
+
+    const tools = await listTools(server)
+    expect(tools).toHaveLength(101) // docs + 50 GETs + 50 DELETEs
+    for (const tool of tools) {
+      expect(tool.annotations, `${tool.name} is missing annotations`).toBeDefined()
+    }
+    // A delete must never be advertised as a safe read.
+    for (const tool of tools.filter((tool) => tool.name.startsWith('delete_'))) {
+      expect(tool.annotations?.readOnlyHint).toBe(false)
+      expect(tool.annotations?.destructiveHint).toBe(true)
+    }
+  })
+
+  it('reports the status, path and a next step when the API call fails', async () => {
+    const specPaths = {
+      '/accounts/{account_id}/workers/scripts': {
+        get: { summary: 'List Workers' } as OperationInfo
+      }
+    }
+
+    await seedSpec(specPaths)
+    const server = await createServer(acctProps('acct-1'), false)
+
+    const originalFetch = globalThis.fetch
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 403,
+      headers: new Headers({ 'content-type': 'application/json' }),
+      json: async () => ({ success: false, errors: [{ code: 10000, message: 'Auth error' }] })
+    })
+
+    try {
+      const result = await callTool(server, 'get_accounts_workers_scripts', {})
+      expect(result.isError).toBe(true)
+      expect(result.content[0].text).toContain('HTTP 403')
+      expect(result.content[0].text).toContain('GET /accounts/acct-1/workers/scripts')
+      expect(result.content[0].text).toContain('Auth error')
+      expect(result.content[0].text).toContain('re-authorize')
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+
+  it('suggests a status-appropriate next step', async () => {
+    const specPaths = {
+      '/accounts/{account_id}/workers/scripts': {
+        get: { summary: 'List Workers' } as OperationInfo
+      }
+    }
+
+    const cases: Array<[number, string]> = [
+      [401, 'reconnect'],
+      [404, 'not found'],
+      [429, 'rate limited'],
+      [500, 'server error']
+    ]
+
+    for (const [status, expected] of cases) {
+      await seedSpec(specPaths)
+      const server = await createServer(acctProps('acct-1'), false)
+
+      const originalFetch = globalThis.fetch
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: false,
+        status,
+        headers: new Headers({ 'content-type': 'text/plain' }),
+        text: async () => 'failure body'
+      })
+
+      try {
+        const result = await callTool(server, 'get_accounts_workers_scripts', {})
+        expect(result.isError, `status ${status}`).toBe(true)
+        expect(result.content[0].text.toLowerCase(), `status ${status}`).toContain(expected)
+      } finally {
+        globalThis.fetch = originalFetch
+        await clearSpec()
+      }
+    }
+  })
+
+  it('annotates the Code-Mode search and execute tools', async () => {
+    await seedSpec({})
+    const server = await createServer(acctProps('test-account'), true)
+
+    const registered = (server as any)._registeredTools
+    expect(registered['search'].annotations).toMatchObject({
+      readOnlyHint: true,
+      openWorldHint: false
+    })
+    expect(registered['execute'].annotations).toMatchObject({
+      readOnlyHint: false,
+      destructiveHint: true,
+      openWorldHint: true
+    })
+    expect(registered['docs'].annotations).toMatchObject({ readOnlyHint: true })
+  })
 })

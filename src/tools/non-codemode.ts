@@ -17,6 +17,7 @@ import {
 } from '../auth/account-access'
 import { recordToolCall } from '../metrics'
 import { DOCS_TOOL, runDocsTool } from './docs-search'
+import { annotationsForMethod } from './annotations'
 import { zodInputSchemaFromJson, type NonCodemodeTool } from '../openapi'
 import type { AuthProps } from '../auth/types'
 
@@ -118,9 +119,40 @@ async function callNonCodemodeTool(
     ? JSON.stringify(await response.json(), null, 2)
     : await response.text()
 
-  return {
-    content: [{ type: 'text', text: truncateResponse(text) }],
-    isError: !response.ok
+  if (!response.ok) {
+    return toolError(
+      `Cloudflare API error (HTTP ${response.status}) for ${tool.method.toUpperCase()} ${resolvedPath}: ` +
+        `${truncateResponse(text)}\n\n${apiErrorGuidance(response.status)}`
+    )
+  }
+
+  return { content: [{ type: 'text', text: truncateResponse(text) }] }
+}
+
+/**
+ * Next step to suggest for a failed Cloudflare API call.
+ *
+ * The generated tools carry no per-endpoint troubleshooting text, so the HTTP
+ * status is the only signal an agent has for whether to fix its arguments, ask
+ * the user to re-authorize, or simply wait and retry.
+ */
+function apiErrorGuidance(status: number): string {
+  switch (status) {
+    case 400:
+    case 422:
+      return 'The request was rejected as invalid. Check the argument values against the endpoint schema in tools/list.'
+    case 401:
+      return 'The API token was rejected. Ask the user to reconnect this MCP server to obtain a fresh token.'
+    case 403:
+      return 'The API token is valid but lacks permission for this endpoint. Ask the user to re-authorize this MCP server with the scopes this product requires.'
+    case 404:
+      return 'The resource was not found. A wrong account, zone or resource ID in the path parameters is the usual cause — list the parent resource to confirm the ID before retrying.'
+    case 429:
+      return 'Still rate limited after the built-in retries. Wait several seconds before calling this tool again, and avoid issuing the same call in a loop.'
+    default:
+      return status >= 500
+        ? 'The Cloudflare API returned a server error. This is usually transient — retry after a short delay.'
+        : 'Check the argument values against the endpoint schema in tools/list.'
   }
 }
 
@@ -138,8 +170,8 @@ function toolError(message: string): CallToolResult {
 }
 
 function toWireTool(tool: NonCodemodeTool): Tool {
-  const { name, description, inputSchema, execution } = tool
-  return { name, description, inputSchema, execution }
+  const { name, description, inputSchema, execution, method } = tool
+  return { name, description, inputSchema, execution, annotations: annotationsForMethod(method) }
 }
 
 function toolForAccountAccess(

@@ -3,6 +3,7 @@ import { env } from 'cloudflare:workers'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import type { Tool } from '@modelcontextprotocol/sdk/types.js'
 import { formatError } from '../utils/errors'
+import { DOCS_ANNOTATIONS } from './annotations'
 
 const AiSearchResponseSchema = z.object({
   object: z.string(),
@@ -89,7 +90,7 @@ export const DOCS_TOOL: Tool = {
     required: ['results'],
     additionalProperties: false
   },
-  annotations: { readOnlyHint: true },
+  annotations: DOCS_ANNOTATIONS,
   execution: { taskSupport: 'forbidden' }
 }
 
@@ -126,9 +127,7 @@ export function registerDocsTool(server: McpServer) {
           })
         )
       },
-      annotations: {
-        readOnlyHint: true
-      }
+      annotations: DOCS_ANNOTATIONS
     },
     ({ query }) => runDocsTool(query)
   )

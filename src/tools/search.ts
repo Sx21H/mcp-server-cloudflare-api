@@ -5,6 +5,7 @@ import { SPEC_TYPES } from '../openapi'
 import { getProducts, getSpec } from '../isolate-cache'
 import { truncateResponse } from '../truncate'
 import { formatError } from '../utils/errors'
+import { SEARCH_ANNOTATIONS } from './annotations'
 
 interface SearchExecutorEntrypoint {
   evaluate(): Promise<{ result: unknown; err?: string; stack?: string }>
@@ -109,7 +110,8 @@ export async function registerSearchTool(server: McpServer): Promise<void> {
       description: searchToolDescription(products),
       inputSchema: {
         code: z.string().describe('JavaScript async arrow function to search the OpenAPI spec')
-      }
+      },
+      annotations: SEARCH_ANNOTATIONS
     },
     async ({ code }) => {
       try {
