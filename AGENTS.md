@@ -46,6 +46,7 @@ cloudflare-mcp/
 │   └── bonk.yml                   # AI code review
 ├── wrangler.jsonc                 # Workers config (dev/staging/prod)
 ├── .oxfmtrc.json                  # oxfmt formatter config
+├── .mcp.json                      # Project-scoped MCP servers for agents working in this repo
 └── README.md
 ```
 
@@ -56,6 +57,57 @@ npm install    # Install dependencies
 ```
 
 Node 22+ required.
+
+### Project MCP servers
+
+`.mcp.json` configures MCP servers for agents working in this repo. Clients that
+support project-scoped config (e.g. Claude Code) pick it up automatically.
+
+| Server      | URL                                       | Transport | Auth     |
+| ----------- | ----------------------------------------- | --------- | -------- |
+| `atlassian` | `https://mcp.atlassian.com/v1/mcp/authv2` | `http`    | OAuth2.1 |
+
+`authv2` is Atlassian's current recommended endpoint; the older
+`/v1/mcp` form still works and is what their one-click installers hand out.
+
+**First connect needs approval.** A server declared in a committed `.mcp.json`
+is registered but does not connect until you approve it — run `claude` and
+accept the prompt, or pre-approve it yourself:
+
+```jsonc
+// .claude/settings.local.json (gitignored)
+{ "enabledMcpjsonServers": ["atlassian"] }
+```
+
+That approval is deliberately personal rather than committed: a repo-controlled
+file approving a repo-controlled server would defeat the prompt for everyone who
+clones. Until it is granted the server shows as `⏸ Pending approval` in
+`claude mcp list` and makes no network request at all.
+
+**OAuth (what `.mcp.json` uses).** Once approved, the client opens a browser on
+first connect and reuses the credentials afterwards, so no tokens or secrets
+belong in `.mcp.json` — the client stores them itself. This is the right default
+for local development.
+
+**API token (headless clients).** The browser flow can't run in CI, containers,
+or remote agent sessions. For those, Atlassian supports a static
+`Authorization` header instead — `Basic base64(email:api_token)` for a personal
+API token, or `Bearer <key>` for a service account. An org admin must enable
+API token auth first.
+
+Configure that **outside** this file. A header holding a credential must never
+be committed — add it as a local-scope server instead, which keeps it in your
+own client config:
+
+```bash
+claude mcp add --scope local --transport http atlassian-local \
+  https://mcp.atlassian.com/v1/mcp/authv2 \
+  --header "Authorization: Basic $(echo -n "$ATLASSIAN_EMAIL:$ATLASSIAN_API_TOKEN" | base64)"
+```
+
+**Network.** Either path needs outbound access to `mcp.atlassian.com`. Sandboxed
+environments often deny it at the egress proxy (a 403 on the CONNECT tunnel);
+that's an environment policy change, not a config fix.
 
 ## Commands
 
