@@ -50,4 +50,26 @@ describe('truncateResponse', () => {
     const arr = [1, 2, 3]
     expect(truncateResponse(arr)).toBe(JSON.stringify(arr, null, 2))
   })
+
+  it('should truncate content one character over the limit', () => {
+    const result = truncateResponse('z'.repeat(24001))
+
+    expect(result.startsWith('z'.repeat(24000) + '\n\n--- TRUNCATED ---')).toBe(true)
+    expect(result).toContain('~6,001 tokens')
+  })
+
+  it('should keep exactly the first 24000 chars and report estimated tokens', () => {
+    const text = 'a'.repeat(12000) + 'b'.repeat(12000) + 'c'.repeat(40000)
+    const result = truncateResponse(text)
+    const [kept] = result.split('\n\n--- TRUNCATED ---')
+
+    expect(kept).toBe(text.slice(0, 24000))
+    expect(kept).not.toContain('c')
+    expect(result).toContain('~16,000 tokens')
+  })
+
+  it('should not truncate a JSON value whose serialization is under the limit', () => {
+    const value = { items: Array(100).fill('x') }
+    expect(truncateResponse(value)).not.toContain('TRUNCATED')
+  })
 })
